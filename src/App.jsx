@@ -1,72 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import VideoPlayer from './components/VideoPlayer';
-import InteractionMode from './components/InteractionMode';
-import TargetOverlay from './components/TargetOverlay';
-import { useSpeech } from './hooks/useSpeech';
-
-// Define our explicit application states
-export const APP_STATES = {
-  IDLE_AD: 'IDLE_AD',
-  GREETING: 'GREETING',
-  INTERACTION: 'INTERACTION',
-  HIGHLIGHT: 'HIGHLIGHT'
-};
+import { useState } from 'react'
+import reactLogo from './assets/react.svg'
+import viteLogo from './assets/vite.svg'
+import heroImg from './assets/hero.png'
+import './App.css'
 
 function App() {
-  const [currentState, setCurentState] = useState(APP_STATES.IDLE_AD);
-  const [selectedCategory, setSelectedCategory] = useState(null);
-  const { speak } = useSpeech;
-
-  // Handle State Transitions and Trigger Speech
-  useEffect(() => {
-    switch (currentState) {
-      case APP_STATES.GREETING:
-        speak("Welcome! Please touch the screen to choose what you would prefer today.", () => {
-          // Once the AI finishes speaking the greeting, automatically move to interaction options
-          setCurrentState(APP_STATES.INTERACTION);
-        });
-        break;
-
-      case APP_STATES.HIGHLIGHT:
-        speak(`Great choice! Your ${selectedCategory} is highlighted inside the machine.`, () => {
-          // Hold the item highlight for 7 seconds, then reset back to looping ads
-          setTimeout(() => {
-            setSelectedCategory(null);
-            setCurrentState(APP_STATES.IDLE_AD);
-          }, 7000);
-        });
-        break;
-
-      default:
-        break;
-    }
-  }, [currentState]);
-
-  // Keyboard Debugger (Simulation AI/Hardware event before we connect Python)
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'a' || e.key === 'A') {
-        console.log('--- Debug: Simulating AI customer detection ---');
-        if (currentState === APP_STATES.IDLE_AD) {
-          setCurrentState(APP_STATES.GREETING);
-        }
-      }
-      if (e.key === 'r' || e.key === 'R') {
-        console.log('--- Debug: Hard resetting to Ad Loop ---');
-        setCurrentState(APP_STATES.IDLE_AD);
-        setSelectedCategory(null);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentState]);
-
-  // Handle what happens when a customer clicks a button on the transparent screen
-  const handleCategorySelect = (category) => {
-    setSelectedCategory(category);
-    setCurrentState(APP_STATES.HIGHLIGHT);
-  };
+  const [count, setCount] = useState(0)
 
   return (
     <div style={styles.container}>
@@ -78,61 +17,108 @@ function App() {
         <div style={styles.fullscreenCenter}>
           <h1 style={styles.glacneText}>🤖 AI Agent Attending...</h1>
         </div>
-      )}
+        <div>
+          <h1>Get started</h1>
+          <p>
+            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
+          </p>
+        </div>
+        <button
+          type="button"
+          className="counter"
+          onClick={() => setCount((count) => count + 1)}
+        >
+          Count is {count}
+        </button>
+      </section>
 
-      {/* INTERACTION SCREEN LAYER */}
-      {currentState === APP_STATES.INTERACTION && (
-        <InteractionMode onSelect={handleCategorySelect} />
-      )}
+      <div className="ticks"></div>
 
-      {/* HIGHLIGHT CIRCLES LAYER */}
-      {currentState === APP_STATES.HIGHLIGHT && (
-        <TargetOverlay category={selectedCategory} />
-      )}
+      <section id="next-steps">
+        <div id="docs">
+          <svg className="icon" role="presentation" aria-hidden="true">
+            <use href="/icons.svg#documentation-icon"></use>
+          </svg>
+          <h2>Documentation</h2>
+          <p>Your questions, answered</p>
+          <ul>
+            <li>
+              <a href="https://vite.dev/" target="_blank">
+                <img className="logo" src={viteLogo} alt="" />
+                Explore Vite
+              </a>
+            </li>
+            <li>
+              <a href="https://react.dev/" target="_blank">
+                <img className="button-icon" src={reactLogo} alt="" />
+                Learn more
+              </a>
+            </li>
+          </ul>
+        </div>
+        <div id="social">
+          <svg className="icon" role="presentation" aria-hidden="true">
+            <use href="/icons.svg#social-icon"></use>
+          </svg>
+          <h2>Connect with us</h2>
+          <p>Join the Vite community</p>
+          <ul>
+            <li>
+              <a href="https://github.com/vitejs/vite" target="_blank">
+                <svg
+                  className="button-icon"
+                  role="presentation"
+                  aria-hidden="true"
+                >
+                  <use href="/icons.svg#github-icon"></use>
+                </svg>
+                GitHub
+              </a>
+            </li>
+            <li>
+              <a href="https://chat.vite.dev/" target="_blank">
+                <svg
+                  className="button-icon"
+                  role="presentation"
+                  aria-hidden="true"
+                >
+                  <use href="/icons.svg#discord-icon"></use>
+                </svg>
+                Discord
+              </a>
+            </li>
+            <li>
+              <a href="https://x.com/vite_js" target="_blank">
+                <svg
+                  className="button-icon"
+                  role="presentation"
+                  aria-hidden="true"
+                >
+                  <use href="/icons.svg#x-icon"></use>
+                </svg>
+                X.com
+              </a>
+            </li>
+            <li>
+              <a href="https://bsky.app/profile/vite.dev" target="_blank">
+                <svg
+                  className="button-icon"
+                  role="presentation"
+                  aria-hidden="true"
+                >
+                  <use href="/icons.svg#bluesky-icon"></use>
+                </svg>
+                Bluesky
+              </a>
+            </li>
+          </ul>
+        </div>
+      </section>
 
-      {/* DEBUG HUD (Will help track state changes easily during development) */}
-      <div style={styles.debugHud}>
-        <p><strong>Current App State:</strong> {currentState}</p>
-        <p><strong>Selected:</strong> {selectedCategory || 'None'}</p>
-        <p style={{ fontSize: '11px', color: '#888', margin: '4px 0 0 0' }}>
-          [Press <strong>A</strong> to simulate customer approach] | [Press <strong>R</strong> to Reset]
-        </p>
-      </div>
-    </div>
-  );
+      <div className="ticks"></div>
+      <section id="spacer"></section>
+    </>
+  )
 }
 
-const styles = {
-  container: {
-    width: '100vw',
-    height: '100vh',
-    backgroundColor: '#ffffff',
-    color: '#000000',
-    fontFamily: 'sans-serif',
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  fullScreenCenter: {
-    width: '100%',
-    height: '100%',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  glanceText: {
-    fontSize: '3rem',
-    color: '#00ffcc',
-  },
-  debugHud: {
-    position: 'absolute',
-    bottom: '20px',
-    left: '20px',
-    background: 'rgba(0, 0, 0, 0.85)',
-    padding: '12px',
-    borderRadius: '8px',
-    border: '1px solid #333',
-    zIndex: 9999,
-  }
-};
-
-export default App;
+export default App
