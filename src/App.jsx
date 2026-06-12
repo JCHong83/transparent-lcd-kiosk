@@ -13,18 +13,52 @@ export const APP_STATES = {
 };
 
 function App() {
+  const [aiSpeechText, setAiSpeechText] = useState("");
   const [currentState, setCurrentState] = useState(APP_STATES.IDLE_AD);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const { speak } = useSpeech();
+
+  // Listen to the live Python AI background process via Electron IPC
+  useEffect(() => {
+    if (window.electronAPI && window.electronAPI.onCustomerUpdate) {
+      window.electronAPI.onCustomerUpdate((data) => {
+        console.log("Real-time AI Frame update:", data);
+
+        // If customer is detected by YOLO and we are sitting idle, transition states
+        if (data.customer_present && currentState === APP_STATES.IDLE_AD) {
+          if (data.ai_text) {
+            setAiSpeechText(data.ai_text); // Store the generated dynamic Llama 3.2 string
+          }
+          setCurrentState(APP_STATES.GREETING);
+        }
+
+        // If customer leaves entirely, reset the system back to the ad loop
+        if (!data.customer_present && currentState !== APP_STATES.IDLE_AD) {
+          setCurrentState(APP_STATES.IDLE_AD);
+          setSelectedCategory(null);
+          setAiSpeechText("");
+        }
+      });
+    }
+
+    return () => {
+      if (window.electronAPI && window.electronAPI.removeCustomerListener) {
+        window.electronAPI.removeCustomerListener();
+      }
+    };
+  }, [currentState]);
 
   // Handle State Transitions and Trigger Speech
   useEffect(() => {
     switch (currentState) {
       case APP_STATES.GREETING:
-        speak("Welcome! Please touch the screen to choose what you would prefer today.", () => {
+        // Use the dynamically generated Llama text if available; fallback if not
+        const greetingPhrase = aiSpeechText || "Welcome! Please touch the screen to choose what you would prefer today.";
+
+        speak(greetingPhrase, () => {
           // Once the AI finishes speaking the greeting, automatically move to interaction options
           setCurrentState(APP_STATES.INTERACTION);
-        });
+        })
         break;
 
       case APP_STATES.HIGHLIGHT:
@@ -32,6 +66,7 @@ function App() {
           // Hold the item highlight for 7 seconds, then reset back to looping ads
           setTimeout(() => {
             setSelectedCategory(null);
+            setAiSpeechText(""); // Clear the conversational text cache
             setCurrentState(APP_STATES.IDLE_AD);
           }, 7000);
         });
@@ -40,7 +75,7 @@ function App() {
       default:
         break;
     }
-  }, [currentState]);
+  }, [currentState, aiSpeechText]);
 
   // Keyboard Debugger (Simulating AI/Hardware events before we connect Python)
   useEffect(() => {
@@ -48,6 +83,7 @@ function App() {
       if (e.key === 'a' || e.key === 'A') {
         console.log('--- Debug: Simulating AI customer detection ---');
         if (currentState === APP_STATES.IDLE_AD) {
+          setAiSpeechText("Hello! I am your holographic assistant. What treats can I fetch for you today?");
           setCurrentState(APP_STATES.GREETING);
         }
       }
@@ -55,6 +91,7 @@ function App() {
         console.log('--- Debug: Hard resetting to Ad Loop ---');
         setCurrentState(APP_STATES.IDLE_AD);
         setSelectedCategory(null);
+        setAiSpeechText("");
       }
     };
 
@@ -76,7 +113,14 @@ function App() {
       {/* 2. GREETING STATUS INDICATOR */}
       {currentState === APP_STATES.GREETING && (
         <div style={styles.fullscreenCenter}>
-          <h1 style={styles.glanceText}>🤖 AI Agent Attending...</h1>
+          <div style={{ textAlign: 'center', padding: '0 40px', maxWidth: '900px' }}>
+            <h1 style={styles.glanceText}>🤖 AI Agent Attending...</h1>
+            {aiSpeechText && (
+              <p style={styles.speechBubbleText}>
+                "{aiSpeechText}"
+              </p>
+            )}
+          </div>
         </div>
       )}
 
@@ -107,8 +151,8 @@ const styles = {
   container: {
     width: '100vw',
     height: '100vh',
-    backgroundColor: '#000000', // Black turns fully transparent on transparent LCDs
-    color: '#ffffff',
+    backgroundColor: '#fff',
+    color: '#000',
     fontFamily: 'sans-serif',
     overflow: 'hidden',
     position: 'relative',
@@ -119,19 +163,22 @@ const styles = {
     display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#fff',
   },
   glanceText: {
     fontSize: '3rem',
-    color: '#00ffcc',
+    color: '#ff0055',
+    margin: 0,
   },
   debugHud: {
     position: 'absolute',
     bottom: '20px',
     left: '20px',
-    background: 'rgba(0, 0, 0, 0.85)',
+    background: 'rgba(255, 255, 255, 0.95)',
+    color: '#000',
     padding: '12px',
     borderRadius: '8px',
-    border: '1px solid #333',
+    border: '1px solid #ccc',
     zIndex: 9999, // Keep it above everything else
   }
 };
