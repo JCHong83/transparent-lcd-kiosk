@@ -5,25 +5,43 @@ import scipy.io.wavfile as wav
 import sounddevice as sd
 
 class VendingAudioRecorder:
-  def __init__(self, sample_rate=16000, threshold=0.03, silence_duration=1.5):
+  def __init__(self, sample_rate=16000, silence_duration=1.5):
     self.sample_rate = sample_rate
-    self.threshold = threshold # Audio energy level required to trigger "speech"
     self.silence_duration = silence_duration # seconds of silence before saving file
     self.output_filename = "customer_input.wav"
+    self.threshold = 0.01 # Audio energy level required to trigger "speech"
+
+  def calibrate_ambient_noise(self):
+    """Measures room audio for 0.5 seconds to set an optimized trigger threshold"""
+    print("🎙️ Calibrating ambient room noise... keep quiet.")
+    duration = 0.5
+    try:
+      recording = sd.rec(int(duration + self.sample_rate), samplerate=self.sample_rate, channels=1)
+      sd.wait()
+      # Calculate RMS energy of ambient room noise
+      rms_ambient = np.linalg.norm(recording) / np.sqrt(len(recording))
+      
+      # Set threshold safely above room noise, but clamp it between safe limits
+      calculated_threshold = rms_ambient * 2.0
+      self.threshold = max(min(calculated_threshold, 0.025), 0.005)
+      
+      print(f"✅ Sensitivity calibrated. Threshold set to: {self.threshold:.4f}")
+    
+    except Exception as e:
+      self.threshold = 0.015
+      print(f"⚠️ Calibration failed ({e}). Falling back to safe default: {self.threshold}")
 
   def record_until_silence(self):
-    """
-    Opens the system microphone and listens dynamically.
-    Saves a clean WAV file once speech starts and then stops.
-    """
+    """Opens microphone, records continuously, and stops after sustained silence"""
+    self.calibrate_ambient_noise()
     print("\n🎤 Microphone listening... Speak when ready.")
 
     audio_buffer = []
     is_speaking = False
     silence_start_time = None
-
     # Internal processing block size (0.1 seconds per chunk)
     chunk_size = int(self.sample_rate * 0.1)
+    recording_finished = False
 
     def callback(indata, frames, time_info, status):
       nonlocal is_speaking, silence_start_time, audio_buffer
@@ -47,16 +65,18 @@ class VendingAudioRecorder:
             # Reset silence timer if they make noise again
             silence_start_time = None
 
+
     # Open raw system microphone hardware stream
     with sd.InputStream(samplerate=self.sample_rate, channels=1,
                         blocksize=chunk_size, callback=callback):
-      while True:
+      while not recording_finished:
         sd.sleep(100) # Keep thread alive
 
         # If we are recording and cross our silence duration limit, break the loop
         if is_speaking and silence_start_time is not None:
           if time.time() - silence_start_time > self.silence_duration:
             print("⏹️ Silence detected. Stopping audio clip.")
+            recording_finished = True
 
     # Flatten buffered frames into a single solid array
     if audio_buffer:
@@ -72,7 +92,5 @@ class VendingAudioRecorder:
 # Standalone execution diagnostic text block
 if __name__ == "__main__":
   recorder = VendingAudioRecorder()
-  # If the default sensitivity is too high/low for your room, adjust 'threshold' here
-  recorder.threshold = 0.02
   saved_file = recorder.record_until_silence()
   print(f"Test complete. File exists: {os.path.exists(saved_file)}")

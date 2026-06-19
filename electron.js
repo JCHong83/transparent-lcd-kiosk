@@ -40,6 +40,13 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+
+  ipcMain.on('trigger-microphone-capture', (event) => {
+    console.log("React informed Electron that speech finished. Initializing voice recorder...");
+    if (pythonProcess && !pythonProcess.killed) {
+      //
+    }
+  })
 });
 
 app.on('window-all-closed', () => {
