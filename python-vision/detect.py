@@ -4,78 +4,106 @@ import cv2
 import json
 import time
 from ultralytics import YOLO
+import webrtcvad
 
 # Local Components
 from slm_client import VendingSLMClient
 from audio_recorder import VendingAudioRecorder
 from transcriber import VendingTranscriber
 
+vad = webrtcvad.Vad(2)
+
+def process_audio(frame):
+  if vad.is_speech(frame, sample_rate=16000):
+    return True
+  return False
 
 def main():
-  # Initialize local hardware components and intelligence cores
-  model = YOLO("yolo11n.pt")
-  cap =cv2.VideoCapture(0)
-
-  slm = VendingSLMClient()
-  recorder = VendingAudioRecorder()
-  transcriber = VendingTranscriber(model_size="tiny", device="cpu")
+  print("📷 Opening Camera Hardware Link...", file=sys.stderr)
+  cap = cv2.VideoCapture(1, cv2.CAP_V4L2)
+  cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
   if not cap.isOpened():
     print(json.dumps({"error": "Could not open system camera"}), flush=True)
     sys.exit(1)
 
-  # Core Proximity Settings
-  PROXIMITY_THRESHOLD = 0.25  # Person must fill > 25% of the frame size
+  print("🔄 Warming up camera sensor...", file=sys.stderr)
+  time.sleep(1.5) 
+  for _ in range(5): 
+    cap.read() 
+
+  print("📦 Loading local intelligence and Whisper models...", file=sys.stderr)
+  model = YOLO("yolo11n.pt")
+  slm = VendingSLMClient()
+  recorder = VendingAudioRecorder()
+  transcriber = VendingTranscriber(model_size="base", device="cpu")
+
+  PROXIMITY_THRESHOLD = 0.06  
   frame_skip = 3
   frame_count = 0
 
-  # Internal Operational Flow Flags
   customer_engaged = False
   awaiting_customer_voice = False
+  
+  # NEW: Persistent memory tracker for the AI's current line
+  current_ai_text = "" 
 
   print("📢 Master AI Vending Engine initialized. Scanning camera...", file=sys.stderr)
 
   try:
     while True:
-      # If the engine is currently listening to speech or waiting for Llama,
-      # temporarily skip processing new video frames to avoid bottleneck buffers
       if awaiting_customer_voice:
-        # Capture voice recording (blocks here until customer stops talking for 1.5s)
+        print("🎙️ Activating microphone stream...", file=sys.stderr)
+        
+        # FIX 1: Resend the current text so React doesn't wipe the subtitles!
+        print(json.dumps({
+          "customer_present": True,
+          "stage": "LISTENING",
+          "ai_text": current_ai_text 
+        }), flush=True)
+        sys.stdout.flush()
+
+        # Capture voice recording
         wav_path = recorder.record_until_silence()
-
-        # Convert the audio file to text
         customer_text = transcriber.transcribe_audio(wav_path)
-
-        # Pass transcribed text to Llama 3.2 to calculate next conversational payload
         slm_response = slm.send_customer_input(customer_text)
 
-        # Combine the structured model output data with our current proximity flags
         output_payload = {
           "customer_present": True,
           "customer_said": customer_text,
-          "stage": slm_response.get("stage", "PREFERENCE_DISCOVERY"),
+          "stage": slm_response.get("stage", "INTERACTION"), 
           "ai_text": slm_response.get("ai_speech", ""),
-          "ui_action": slm_response.get("ui_action", "SHOW_SPEECH_TEXT"),
+          "ui_action": slm_response.get("ui_action", "SHOW_TOUCH_OPTIONS"),
           "recommended_categories": slm_response.get("recommended_categories", [])
         }
 
-        # Push the data through stdout directly to Electron
-        print(json.dumps(output_payload), flush=True)
+        # Update the tracker for the next cycle
+        current_ai_text = output_payload["ai_text"]
 
-        # Unblock the main camera loop loop
+        # 1. Instantly send text to React
+        print(json.dumps(output_payload), flush=True)
+        
+        # FIX 2: Force OS buffer flush and give React 100ms to paint the screen
+        sys.stdout.flush()
+        time.sleep(0.1) 
+
+        # 2. Start hardware audio safely
+        if current_ai_text:
+          slm.voice.speak(current_ai_text)
+
         awaiting_customer_voice = False
         continue
 
-      # Standard Camera Frame Tracking Routine
+      # Standard Camera Frame Tracking
       ret, frame = cap.read()
       if not ret:
+        print("❌ Failed to grab frame from device stream.", file=sys.stderr)
         break
 
       frame_count += 1
       if frame_count % frame_skip != 0:
         continue
 
-      # Get frame dimensions
       height, width, _ = frame.shape
       frame_area = width * height
       results = model(frame, verbose=False)
@@ -83,7 +111,7 @@ def main():
 
       for result in results:
         for box in result.boxes:
-          if int(box.cls[0]) == 0: # Class 0 = Person
+          if int(box.cls[0]) == 0: 
             xyxy = box.xyxy[0].tolist()
             box_area = (xyxy[2] - xyxy[0]) * (xyxy[3] - xyxy[1])
             area_ratio = box_area / frame_area
@@ -92,11 +120,10 @@ def main():
 
       is_present = max_area_ratio >= PROXIMITY_THRESHOLD
 
-      # SCENARIO A: A fresh customer arrives at the vending machine
+      # SCENARIO A: A fresh customer arrives
       if is_present and not customer_engaged:
         customer_engaged = True
 
-        # Fetch a dynamic local icebreaker context greeting from Llama 3.2
         init_instruction = (
           "A customer just walked up to the screen. Greet them warmly, make a quick witty remark "
           "about the weather outside, and ask how they are holding up. Keep it to 2 sentences."
@@ -111,25 +138,42 @@ def main():
           "ui_action": "SHOW_SPEECH_TEXT",
           "recommended_categories": []
         }
-        print(json.dumps(output_payload), flush=True)
+        
+        # Update the tracker
+        current_ai_text = output_payload["ai_text"]
 
-      # SCENARIO B: Customer has left the vending machine grid area
+        # 1. Instantly send text to React
+        print(json.dumps(output_payload), flush=True)
+        
+        # FIX 2: Force OS buffer flush and give React 100ms to paint the screen
+        sys.stdout.flush()
+        time.sleep(0.1)
+
+        # 2. Start hardware audio safely
+        if current_ai_text:
+          slm.voice.speak(current_ai_text)
+
+        awaiting_customer_voice = True
+
+      elif is_present and customer_engaged:
+        awaiting_customer_voice = True
+
       elif not is_present and customer_engaged:
         print("➡️ Customer left the system area. Resetting conversation context.", file=sys.stderr)
         customer_engaged = False
+        awaiting_customer_voice = False
+        current_ai_text = "" # Clear memory
         slm.reset_conversation()
 
-        output_payload = {
+        print(json.dumps({
           "customer_present": False,
           "customer_said": "",
           "stage": "IDLE_AD",
           "ai_text": "",
           "ui_action": "SHOW_SPEECH_TEXT",
           "recommended_categories": []
-        }
-        print(json.dumps(output_payload), flush=True)
+        }), flush=True)
 
-      # Short sleep delay signature to ease CPU overhead cycles
       time.sleep(0.03)
 
   except KeyboardInterrupt:

@@ -2,8 +2,17 @@ import os
 import sys
 from faster_whisper import WhisperModel
 
+TOKEN_FILE = os.path.join(os.path.dirname(__file__), "../.env")
+
+if os.path.exists(TOKEN_FILE):
+  with open(TOKEN_FILE, "r") as f:
+    os.environ["HF_TOKEN"] = f.read().strip()
+else:
+  print("⚠️ Warning: token.txt not found. Running with unauthenticated limits.", file=sys.stderr)
+
 class VendingTranscriber:
-  def __init__(self, model_size="tiny", device="cpu"):
+  # Changed default to 'base' so it aligns with your updated detect.py
+  def __init__(self, model_size="small", device="cpu"):
     """
     Initializes the optimized local transcription model.
     Model sizes: 'tiny', 'base', 'small', 'tiny' is perfect for high-speed kiosks.
@@ -21,9 +30,19 @@ class VendingTranscriber:
       return ""
     
     try:
+      # VENDING MACHINE CONTEXT PRIMING
+      # This hint gives Whisper a "cheat sheet" of the vocabulary it should expect to hear.
+      vending_hint = "Ciao! Vorrei uno snack, da bere, acqua, ho fame. Hello, looking for a drink or sweet."
+
       # Run local voice-to-text inference
-      # language="en" anchors it for testing: remove it later for multilingual automatic detection
-      segments, info = self.model.transcribe(wav_file_path, beam_size=1, language="en")
+      # Switched language to "it" to match your Italian UI and AI text. 
+      # (If you want it to auto-detect the language instead, remove the language="it" argument entirely).
+      segments, info = self.model.transcribe(
+          wav_file_path, 
+          beam_size=1, 
+          language="it", 
+          initial_prompt=vending_hint
+      )
 
       # Combine individual spoken word segments into a unified sentence string
       full_text = ""
@@ -44,7 +63,7 @@ if __name__ == "__main__":
   if not os.path.exists(test_file):
     print(f"❌ Missing target file: {test_file}. Please run audio_recorder.py first to generate a sample!")
   else:
-    transcriber = VendingTranscriber(model_size="tiny", device="cpu")
+    transcriber = VendingTranscriber(model_size="base", device="cpu")
     print("\n📝 Decoding audio file baseline...")
     result_text = transcriber.transcribe_audio(test_file)
     print("\n🎯 Transcription Output result:")

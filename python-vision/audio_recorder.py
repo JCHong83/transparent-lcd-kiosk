@@ -5,7 +5,7 @@ import scipy.io.wavfile as wav
 import sounddevice as sd
 
 class VendingAudioRecorder:
-  def __init__(self, sample_rate=16000, silence_duration=1.5):
+  def __init__(self, sample_rate=16000, silence_duration=0.8):
     self.sample_rate = sample_rate
     self.silence_duration = silence_duration # seconds of silence before saving file
     self.output_filename = "customer_input.wav"
@@ -52,18 +52,20 @@ class VendingAudioRecorder:
       volume_norm = np.linalg.norm(indata) / np.sqrt(len(indata))
       audio_buffer.append(indata.copy())
 
+      # 1. Detect the start of speech
       if not is_speaking and volume_norm > self.threshold:
         print("➡️ Speech Detected... recording.")
         is_speaking = True
 
+      # 2. Track silence to stop recording
       if is_speaking:
         if volume_norm < self.threshold:
+          # If it's quiet, start the countdown (if not already started)
           if silence_start_time is None:
             silence_start_time = time.time()
-          
-          else:
-            # Reset silence timer if they make noise again
-            silence_start_time = None
+        else:
+          # FIX: If volume goes back UP, they are still talking! Reset the silence timer.
+          silence_start_time = None
 
 
     # Open raw system microphone hardware stream

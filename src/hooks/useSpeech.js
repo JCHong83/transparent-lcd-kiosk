@@ -1,23 +1,16 @@
 import { useCallback } from 'react';
 
 export function useSpeech() {
-  const speak = useCallback((text, onEndCallBack) => {
-    // If speech is already playing, cancel it to avoid queues overlapping
-    window.speechSynthesis.cancel();
+  const speak = useCallback((text, onEnd) => {
+    console.log("🔊 Python backend is handling the voice output. React animating mouth for:", text);
 
-    const utterance = new SpeechSynthesisUtterance(text);
+    const wordCount = text.split(" ").length;
+    const readingDelayMs = Math.max(Math.round((wordCount / 3) * 1000), 2500);
 
-    // Optional configuration for local testing
-    utterance.rate = 1.0; // Speed of speech
-    utterance.pitch = 1.0; // Pitch level
-
-    if (onEndCallback) {
-      utterance.onend = () => {
-        onEndCallback();
-      };
-    }
-
-    window.speechSynthesis.speak(utterance);
+    setTimeout(() => {
+      console.log("👄 Face animation window concluded.");
+      if (onEnd) onEnd();
+    }, readingDelayMs);
   }, []);
 
   return { speak };
