@@ -1,7 +1,8 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { spawn } from 'child_process'; // 1. IMPORT NODE'S PROCESS SPAWNER
+import { spawn } from 'child_process';
+import readline from 'readline';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -50,18 +51,32 @@ app.whenReady().then(() => {
   pythonProcess = spawn(venvPythonPath, [pythonScriptPath]);
 
   // Listen to Python's standard output
-  pythonProcess.stdout.on('data', (data) => {
-    const rawString = data.toString().trim();
+  const rl = readline.createInterface({
+    input: pythonProcess.stdout,
+    terminal: false
+  });
+
+  rl.on('line', (line) => {
+    const rawString = line.trim();
+    if (!rawString) return;
+
     try {
-      // Try to parse the incoming text as JSON
+      // Try to parse the incoming line as JSON
       const payload = JSON.parse(rawString);
       
       // If successful, beam it straight to the React frontend!
       if (mainWindow) {
         mainWindow.webContents.send('customer-proximity-update', payload);
       }
+
+      // THE TWO-WAY HANDSHAKE
+      // Only send READY if it was actually a valid JSON payload
+      if (pythonProcess && !pythonProcess.killed) {
+        pythonProcess.stdin.write("READY\n");
+      }
+
     } catch (e) {
-      // If it's not JSON (like warmup logs), just print it to the Electron console
+      // It's not JSON (like the Whisper Rocket emoji log). Just print it safely!
       console.log("Python Log:", rawString);
     }
   });

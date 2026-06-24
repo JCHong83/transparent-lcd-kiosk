@@ -36,7 +36,7 @@ def main():
   model = YOLO("yolo11n.pt")
   slm = VendingSLMClient()
   recorder = VendingAudioRecorder()
-  transcriber = VendingTranscriber(model_size="base", device="cpu")
+  transcriber = VendingTranscriber(model_size="small", device="cpu")
 
   PROXIMITY_THRESHOLD = 0.06  
   frame_skip = 3
@@ -55,13 +55,15 @@ def main():
       if awaiting_customer_voice:
         print("🎙️ Activating microphone stream...", file=sys.stderr)
         
-        # FIX 1: Resend the current text so React doesn't wipe the subtitles!
         print(json.dumps({
           "customer_present": True,
           "stage": "LISTENING",
           "ai_text": current_ai_text 
         }), flush=True)
         sys.stdout.flush()
+
+        # Wait for React to clear the UI
+        sys.stdin.readline()
 
         # Capture voice recording
         wav_path = recorder.record_until_silence()
@@ -85,10 +87,11 @@ def main():
         
         # FIX 2: Force OS buffer flush and give React 100ms to paint the screen
         sys.stdout.flush()
-        time.sleep(0.1) 
+        
+        receipt = sys.stdin.readline().strip()
 
         # 2. Start hardware audio safely
-        if current_ai_text:
+        if current_ai_text and receipt == "READY":
           slm.voice.speak(current_ai_text)
 
         awaiting_customer_voice = False
@@ -124,9 +127,22 @@ def main():
       if is_present and not customer_engaged:
         customer_engaged = True
 
+        # Tell React to kill the ad while Llama thinks
+        print(json.dumps({
+          "customer_present": True,
+          "customer_said": "",
+          "stage": "ICEBREAKER",
+          "ai_text": "",
+          "ui_action": "SHOW_SPEECH_TEXT",
+          "recommended_categories": []
+        }), flush=True)
+        sys.stdout.flush()
+        sys.stdin.readline() # HANDSHAKE
+
         init_instruction = (
-          "A customer just walked up to the screen. Greet them warmly, make a quick witty remark "
-          "about the weather outside, and ask how they are holding up. Keep it to 2 sentences."
+          "Un cliente si è appena avvicinato allo schermo. Salutalo calorosamente, "
+          "fai una battuta simpatica e veloce sul tempo che fa fuori e chiedigli come sta. "
+          "Massimo 2 frasi."
         )
         slm_response = slm.send_customer_input(init_instruction)
 
@@ -147,10 +163,11 @@ def main():
         
         # FIX 2: Force OS buffer flush and give React 100ms to paint the screen
         sys.stdout.flush()
-        time.sleep(0.1)
+        receipt = sys.stdin.readline().strip()
+
 
         # 2. Start hardware audio safely
-        if current_ai_text:
+        if current_ai_text and receipt == "READY":
           slm.voice.speak(current_ai_text)
 
         awaiting_customer_voice = True
@@ -173,6 +190,8 @@ def main():
           "ui_action": "SHOW_SPEECH_TEXT",
           "recommended_categories": []
         }), flush=True)
+        sys.stdout.flush()
+        sys.stdin.readline()
 
       time.sleep(0.03)
 

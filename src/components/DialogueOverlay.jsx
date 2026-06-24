@@ -6,16 +6,41 @@ function DialogueOverlay({ aiText, customerSaid }) {
   const [isVisible, setIsVisible] = useState(false);
   
   const hideTimeoutRef = useRef(null);
+  const typingIntervalRef = useRef(null); // NEW: Track the typing interval
 
   useEffect(() => {
     // If there is new text from either the AI or the Customer, show the overlay
     if (aiText || customerSaid) {
-      setDisplayedAiText(aiText);
       setDisplayedCustomerText(customerSaid);
       setIsVisible(true);
 
-      // Clear any existing timer if a new message comes in early
+      // Clear any existing timers if a new message comes in early
       if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
+      if (typingIntervalRef.current) clearInterval(typingIntervalRef.current);
+
+      // --- TYPEWRITER LOGIC INTEGRATION ---
+      if (aiText) {
+        const cleanText = aiText.trim();
+        let currentIndex = 0;
+        
+        // Start completely empty
+        setDisplayedAiText(""); 
+        
+        // Fire every 65ms
+        typingIntervalRef.current = setInterval(() => {
+          // .slice() grabs the chunk of the string from 0 up to the current index.
+          // This prevents React state closures from skipping any letters!
+          setDisplayedAiText(cleanText.slice(0, currentIndex + 1));
+          currentIndex++;
+          
+          if (currentIndex >= cleanText.length) {
+            clearInterval(typingIntervalRef.current);
+          }
+        }, 65);
+      } else {
+        setDisplayedAiText("");
+      }
+      // ------------------------------------
 
       // 1. Calculate how long the AI takes to speak (~65ms per character)
       // (If the AI isn't speaking but the customer is, default to a 3-second minimum)
@@ -32,9 +57,10 @@ function DialogueOverlay({ aiText, customerSaid }) {
       setIsVisible(false);
     }
 
-    // Cleanup timer on unmount
+    // Cleanup timers on unmount to prevent memory leaks
     return () => {
       if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
+      if (typingIntervalRef.current) clearInterval(typingIntervalRef.current);
     };
   }, [aiText, customerSaid]);
 
@@ -68,7 +94,8 @@ function DialogueOverlay({ aiText, customerSaid }) {
       {/* Main Agent Script Reading Track */}
       <div style={styles.aiScriptBox}>
         <p style={styles.scriptText}>
-          {displayedAiText || "Ascoltando..."}
+          {/* Fallback to Ascoltando only if AI text isn't currently being typed */}
+          {aiText && displayedAiText === "" ? "" : (displayedAiText || "Ascoltando...")}
         </p>
       </div>
       
